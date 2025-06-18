@@ -347,4 +347,5 @@ MIT License - Xem file LICENSE để biết chi tiết.
 
 ---
 
-**⚠️ Disclaimer**: Script này được phát triển để hỗ trợ việc quản lý nhiều Blockcast BEACON node. Luôn backup dữ liệu quan trọng và test trên môi trường development trước khi sử dụng production. 
+**⚠️ Disclaimer**: Script này được phát triển để hỗ trợ việc quản lý nhiều Blockcast BEACON node. Luôn backup dữ liệu quan trọng và test trên môi trường development trước khi sử dụng production. #   b l 0 c k c a s t _ 2 2  
+ 
