@@ -41,6 +41,7 @@ show_help() {
     echo "  $0 test-node-ip [node-name] - Kiểm tra IP của node"
     echo "  $0 proxy-stats              - Thống kê sử dụng proxy"
     echo "  $0 fix-compose [node-name]  - Sửa lỗi docker-compose.yml"
+    echo "  $0 create-image [node-name] - Tạo image riêng cho node"
     echo ""
 }
 
@@ -230,6 +231,25 @@ add_proxy_to_compose() {
     fi
 }
 
+# Tạo image riêng cho node để tránh conflict
+create_node_image() {
+    local node_name="$1"
+    
+    echo -e "${YELLOW}Tạo image riêng cho node '$node_name'...${NC}"
+    
+    # Pull image gốc nếu chưa có
+    if ! docker images | grep -q "blockcast/cdn_gateway_go.*stable"; then
+        echo -e "${YELLOW}Pulling image gốc...${NC}"
+        docker pull blockcast/cdn_gateway_go:stable
+    fi
+    
+    # Tạo tag riêng cho node này
+    local node_image="blockcast/cdn_gateway_go:${node_name}-stable"
+    docker tag blockcast/cdn_gateway_go:stable "$node_image"
+    
+    echo -e "${GREEN}✅ Đã tạo image: $node_image${NC}"
+}
+
 # Tạo docker-compose.yml cho node cụ thể
 create_node_compose() {
     local node_name="$1"
@@ -239,7 +259,8 @@ create_node_compose() {
     local compose_dir="${NODES_DIR}/${node_name}"
     local compose_file="${compose_dir}/docker-compose.yml"
     
-    # Tạo nội dung docker-compose.yml chỉ thay đổi proxy, port và container names
+    # Tạo nội dung docker-compose.yml đúng với template gốc
+    # Chỉ thay đổi: container names, port, proxy environment
     cat > "$compose_file" << EOF
 x-service: &service
   image: blockcast/cdn_gateway_go:\${IMAGE_VERSION:-stable}
@@ -265,7 +286,7 @@ EOF
 EOF
     fi
     
-    # Services section - chỉ thay đổi container names và port
+    # Services section - đúng với template gốc + thay đổi container names và port
     cat >> "$compose_file" << EOF
 
 services:
@@ -305,7 +326,7 @@ EOF
 EOF
     fi
     
-    # Kết thúc watchtower với volumes và ports
+    # Kết thúc watchtower với volumes và ports - đúng với template gốc
     cat >> "$compose_file" << EOF
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -936,6 +957,13 @@ main() {
             ;;
         "fix-compose")
             fix_compose "$2"
+            ;;
+        "create-image")
+            if [ -z "$2" ]; then
+                echo -e "${RED}Vui lòng chỉ định tên node!${NC}"
+                exit 1
+            fi
+            create_node_image "$2"
             ;;
         "help"|"--help"|"-h"|"")
             print_header

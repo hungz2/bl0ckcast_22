@@ -1,11 +1,10 @@
 x-service: &service
   image: blockcast/cdn_gateway_go:${IMAGE_VERSION:-stable}
-  restart: always
+  restart: unless-stopped
   network_mode: "service:blockcastd"
   volumes:
     - ${HOME}/.blockcast/certs:/var/opt/magma/certs
     - ${HOME}/.blockcast/snowflake:/etc/snowflake
-    - /var/run/docker.sock:/var/run/docker.sock    
   labels:
     - "com.centurylinklabs.watchtower.enable=true"
 
@@ -28,7 +27,11 @@ services:
 
   watchtower:
     image: containrrr/watchtower
+    container_name: watchtower
+    restart: unless-stopped
     environment:
-      WATCHTOWER_LABEL_ENABLE: "true"
+      - WATCHTOWER_LABEL_ENABLE=true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8080:8080"
