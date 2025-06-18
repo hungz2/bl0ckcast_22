@@ -239,30 +239,22 @@ create_node_compose() {
     local compose_dir="${NODES_DIR}/${node_name}"
     local compose_file="${compose_dir}/docker-compose.yml"
     
-    # Tạo nội dung docker-compose.yml với proxy và container names
+    # Tạo nội dung docker-compose.yml chỉ thay đổi proxy, port và container names
     cat > "$compose_file" << EOF
 x-service: &service
   image: blockcast/cdn_gateway_go:\${IMAGE_VERSION:-stable}
-  restart: always
+  restart: unless-stopped
   network_mode: "service:blockcastd"
   volumes:
     - \${HOME}/.blockcast/certs:/var/opt/magma/certs
     - \${HOME}/.blockcast/snowflake:/etc/snowflake
-    - /var/run/docker.sock:/var/run/docker.sock
   labels:
     - "com.centurylinklabs.watchtower.enable=true"
 EOF
     
-    # Thêm proxy configuration nếu có
+    # Thêm proxy environment nếu có
     if [ -n "$proxy" ]; then
-        # Parse proxy thành các thành phần
-        if [[ "$proxy" =~ http://([^:]+):([^@]+)@([^:]+):([0-9]+) ]]; then
-            local proxy_user="${BASH_REMATCH[1]}"
-            local proxy_pass="${BASH_REMATCH[2]}" 
-            local proxy_host="${BASH_REMATCH[3]}"
-            local proxy_port="${BASH_REMATCH[4]}"
-            
-            cat >> "$compose_file" << EOF
+        cat >> "$compose_file" << EOF
   environment:
     - HTTP_PROXY=$proxy
     - HTTPS_PROXY=$proxy
@@ -271,54 +263,12 @@ EOF
     - https_proxy=$proxy
     - no_proxy=localhost,127.0.0.1
 EOF
-        else
-            cat >> "$compose_file" << EOF
-  environment:
-    - HTTP_PROXY=$proxy
-    - HTTPS_PROXY=$proxy
-    - NO_PROXY=localhost,127.0.0.1
-    - http_proxy=$proxy
-    - https_proxy=$proxy
-    - no_proxy=localhost,127.0.0.1
-EOF
-        fi
     fi
     
-    # Thêm services section
+    # Services section - chỉ thay đổi container names và port
     cat >> "$compose_file" << EOF
 
 services:
-EOF
-
-    # Nếu có proxy, tạo privoxy container để handle proxy
-    if [ -n "$proxy" ]; then
-        # Parse proxy credentials
-        if [[ "$proxy" =~ http://([^:]+):([^@]+)@([^:]+):([0-9]+) ]]; then
-            local proxy_user="${BASH_REMATCH[1]}"
-            local proxy_pass="${BASH_REMATCH[2]}" 
-            local proxy_host="${BASH_REMATCH[3]}"
-            local proxy_port="${BASH_REMATCH[4]}"
-            
-            cat >> "$compose_file" << EOF
-  privoxy:
-    image: vimagick/privoxy
-    container_name: ${node_name}-privoxy
-    restart: always
-    ports:
-      - "127.0.0.1:0:8118"
-    environment:
-      - PRIVOXY_FORWARD_SOCKS5=${proxy_host}:${proxy_port}
-      - PRIVOXY_FORWARD_HTTP=${proxy_host}:${proxy_port}
-    command: >
-      sh -c "echo 'forward / ${proxy_host}:${proxy_port}' > /etc/privoxy/config &&
-             echo 'listen-address 0.0.0.0:8118' >> /etc/privoxy/config &&
-             privoxy --no-daemon /etc/privoxy/config"
-      
-EOF
-        fi
-    fi
-
-    cat >> "$compose_file" << EOF
   control_proxy:
     <<: *service
     container_name: ${node_name}-control_proxy
@@ -338,28 +288,29 @@ EOF
   watchtower:
     image: containrrr/watchtower
     container_name: ${node_name}-watchtower
-    ports:
-      - "${port}:8080"
+    restart: unless-stopped
     environment:
-      WATCHTOWER_LABEL_ENABLE: "true"
+      - WATCHTOWER_LABEL_ENABLE=true
 EOF
     
     # Thêm proxy environment cho watchtower nếu có
     if [ -n "$proxy" ]; then
         cat >> "$compose_file" << EOF
-      HTTP_PROXY: "$proxy"
-      HTTPS_PROXY: "$proxy"
-      NO_PROXY: "localhost,127.0.0.1"
-      http_proxy: "$proxy"
-      https_proxy: "$proxy"
-      no_proxy: "localhost,127.0.0.1"
+      - HTTP_PROXY=$proxy
+      - HTTPS_PROXY=$proxy
+      - NO_PROXY=localhost,127.0.0.1
+      - http_proxy=$proxy
+      - https_proxy=$proxy
+      - no_proxy=localhost,127.0.0.1
 EOF
     fi
     
-    # Kết thúc watchtower service
+    # Kết thúc watchtower với volumes và ports
     cat >> "$compose_file" << EOF
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "${port}:8080"
 EOF
 }
 
