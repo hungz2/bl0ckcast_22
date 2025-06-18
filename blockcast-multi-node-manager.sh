@@ -524,8 +524,8 @@ check_status() {
         return 0
     fi
     
-    printf "%-15s %-10s %-15s %-10s %-15s %-20s\n" "NODE NAME" "STATUS" "WATCHTOWER" "PORT" "PROXY" "DESCRIPTION"
-    echo "=========================================================================================="
+    printf "%-15s %-10s %-15s %-15s %-20s\n" "NODE NAME" "STATUS" "PORT" "PROXY" "DESCRIPTION"
+    echo "============================================================================="
     
     jq -r '.nodes | to_entries[] | "\(.key) \(.value.watchtower_port) \(.value.proxy) \(.value.description)"' "$CONFIG_FILE" | while read -r name port proxy description; do
         local node_dir=$(jq -r ".nodes.\"$name\".directory" "$CONFIG_FILE")
@@ -536,8 +536,11 @@ check_status() {
         local containers_running=0
         local total_containers=4  # watchtower, beacond, blockcastd, control_proxy
         
-        if docker compose ps --format json 2>/dev/null | jq -r '.[].State' | grep -q "running"; then
-            containers_running=$(docker compose ps --format json 2>/dev/null | jq -r '.[].State' | grep -c "running")
+        # Sử dụng docker compose ps thông thường thay vì --format json
+        if docker compose ps 2>/dev/null | grep -q "Up"; then
+            containers_running=$(docker compose ps 2>/dev/null | grep -c "Up")
+        elif docker-compose ps 2>/dev/null | grep -q "Up"; then
+            containers_running=$(docker-compose ps 2>/dev/null | grep -c "Up")
         fi
         
         if [ "$containers_running" -eq "$total_containers" ]; then
@@ -556,7 +559,7 @@ check_status() {
             proxy_display="None"
         fi
         
-        printf "%-25s %-20s %-25s %-10s %-15s %-20s\n" "$name" "$status" "${GREEN}$port${NC}" "$port" "$proxy_display" "$description"
+        printf "%-15s %-10s %-15s %-15s %-20s\n" "$name" "$status" "$port" "$proxy_display" "$description"
     done
 }
 
