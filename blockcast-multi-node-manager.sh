@@ -479,20 +479,12 @@ check_status() {
     echo "============================================================================="
     
     jq -r '.nodes | to_entries[] | "\(.key) \(.value.watchtower_port) \(.value.proxy) \(.value.description)"' "$CONFIG_FILE" | while read -r name port proxy description; do
-        local node_dir=$(jq -r ".nodes.\"$name\".directory" "$CONFIG_FILE")
-        
-        cd "$node_dir" 2>/dev/null || continue
-        
-        # Kiểm tra container status
+        # Kiểm tra container status trực tiếp từ docker ps
         local containers_running=0
         local total_containers=4  # watchtower, beacond, blockcastd, control_proxy
         
-        # Sử dụng docker compose ps thông thường thay vì --format json
-        if docker compose ps 2>/dev/null | grep -q "Up"; then
-            containers_running=$(docker compose ps 2>/dev/null | grep -c "Up")
-        elif docker-compose ps 2>/dev/null | grep -q "Up"; then
-            containers_running=$(docker-compose ps 2>/dev/null | grep -c "Up")
-        fi
+        # Đếm số container đang chạy với prefix node name
+        containers_running=$(docker ps --format "table {{.Names}}\t{{.Status}}" | grep "^${name}-" | grep -c "Up" 2>/dev/null || echo "0")
         
         if [ "$containers_running" -eq "$total_containers" ]; then
             status="${GREEN}RUNNING${NC}"
@@ -862,46 +854,38 @@ test_node_ip() {
         echo -e "${BLUE}Node không sử dụng proxy${NC}"
     fi
     
-    cd "$node_dir"
-    
     # Kiểm tra container có đang chạy không
-    if docker compose version &> /dev/null; then
-        if ! docker compose ps | grep -q "Up"; then
-            echo -e "${RED}Node chưa được khởi động!${NC}"
-            return 1
-        fi
-        
-        # Test IP từ trong container
-        echo -e "${YELLOW}Testing IP từ container beacond...${NC}"
-        local container_ip=$(docker compose exec -T beacond curl -s --connect-timeout 5 https://httpbin.org/ip 2>/dev/null | jq -r '.origin' 2>/dev/null)
-        
-        if [ -n "$container_ip" ] && [ "$container_ip" != "null" ]; then
-            echo -e "${GREEN}🔍 IP từ container: $container_ip${NC}"
-        else
-            echo -e "${YELLOW}⚠️  Không thể lấy IP từ container${NC}"
-        fi
-        
-        # So sánh với IP host
-        local host_ip=$(curl -s --connect-timeout 5 https://httpbin.org/ip | jq -r '.origin' 2>/dev/null)
-        if [ -n "$host_ip" ] && [ "$host_ip" != "null" ]; then
-            echo -e "${BLUE}🏠 IP của host: $host_ip${NC}"
-            
-            if [ "$container_ip" != "$host_ip" ]; then
-                echo -e "${GREEN}✅ Container đang sử dụng IP khác với host${NC}"
-            else
-                echo -e "${YELLOW}⚠️  Container đang sử dụng cùng IP với host${NC}"
-            fi
-        fi
-        
-        # Nếu có proxy, test xem proxy có hoạt động không
-        if [ -n "$proxy" ]; then
-            echo -e "${YELLOW}Testing proxy trực tiếp...${NC}"
-            test_proxy "$proxy"
-        fi
-        
-    else
-        echo -e "${RED}Docker compose không có sẵn!${NC}"
+    if ! docker ps | grep -q "${node_name}-beacond"; then
+        echo -e "${RED}Node '$node_name' chưa được khởi động!${NC}"
         return 1
+    fi
+    
+    # Test IP từ trong container
+    echo -e "${YELLOW}Testing IP từ container beacond...${NC}"
+    local container_ip=$(docker exec -i "${node_name}-beacond" curl -s --connect-timeout 5 https://httpbin.org/ip 2>/dev/null | jq -r '.origin' 2>/dev/null)
+        
+    if [ -n "$container_ip" ] && [ "$container_ip" != "null" ]; then
+        echo -e "${GREEN}🔍 IP từ container: $container_ip${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Không thể lấy IP từ container${NC}"
+    fi
+    
+    # So sánh với IP host
+    local host_ip=$(curl -s --connect-timeout 5 https://httpbin.org/ip | jq -r '.origin' 2>/dev/null)
+    if [ -n "$host_ip" ] && [ "$host_ip" != "null" ]; then
+        echo -e "${BLUE}🏠 IP của host: $host_ip${NC}"
+        
+        if [ "$container_ip" != "$host_ip" ]; then
+            echo -e "${GREEN}✅ Container đang sử dụng IP khác với host${NC}"
+        else
+            echo -e "${YELLOW}⚠️  Container đang sử dụng cùng IP với host${NC}"
+        fi
+    fi
+    
+    # Nếu có proxy, test xem proxy có hoạt động không
+    if [ -n "$proxy" ]; then
+        echo -e "${YELLOW}Testing proxy trực tiếp...${NC}"
+        test_proxy "$proxy"
     fi
 }
 
